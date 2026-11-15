@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASII Chart</title>
+<style>
+:root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#1a6fd4; --grid:#e3e3e3; --card:#f5f5f5; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16181c; --fg:#eee; --muted:#9aa; --line:#5aa9ff; --grid:#2d3138; --card:#22252b; }
+}
+body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }
+h1 { font-size:18px; margin:0 0 2px; }
+.sub { color:var(--muted); font-size:13px; }
+.price { font-size:28px; font-weight:600; }
+.chg { font-size:14px; margin-left:6px; }
+canvas { width:100%; height:220px; display:block; margin:10px 0; }
+.stats { display:flex; gap:8px; font-size:13px; color:var(--muted); }
+.stats div { flex:1; background:var(--card); padding:8px; border-radius:8px; }
+.stats b { display:block; color:var(--fg); font-size:15px; }
+</style>
+</head>
+<body>
+<h1>ASII.JK</h1>
+<div class="sub">Astra International Tbk, 6 months</div>
+<div><span class="price" id="price">Loading...</span><span class="chg" id="chg"></span></div>
+<canvas id="c"></canvas>
+<div class="stats">
+  <div>6-month low<b id="lo">-</b></div>
+  <div>6-month high<b id="hi">-</b></div>
+</div>
+<div class="sub" id="asof" style="margin-top:8px"></div>
+
+<script>
+var pts = [];
+var fmt = function (n) { return Math.round(n).toLocaleString("en-US"); };
+var showDate = function (s) {
+  return new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+};
+
+function draw() {
+  var last = pts[pts.length - 1].close;
+  var prev = pts[pts.length - 2].close;
+  var diff = last - prev;
+  var pct = prev ? (diff / prev) * 100 : 0;
+  document.getElementById("price").textContent = fmt(last);
+  var chg = document.getElementById("chg");
+  chg.textContent = (diff >= 0 ? "+" : "") + fmt(diff) + " (" + pct.toFixed(2) + "%)";
+  chg.style.color = diff >= 0 ? "#1a9d4a" : "#d33";
+
+  var vals = pts.map(function (p) { return p.close; });
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  document.getElementById("lo").textContent = fmt(lo);
+  document.getElementById("hi").textContent = fmt(hi);
+  document.getElementById("asof").textContent = "Last close: " + showDate(pts[pts.length - 1].date);
+
+  var cv = document.getElementById("c");
+  var dpr = window.devicePixelRatio || 1;
+  var W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  var g = cv.getContext("2d");
+  g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+  var cs = getComputedStyle(document.body);
+  var padL = 44, padR = 6, padT = 8, padB = 8;
+  var span = hi - lo || 1;
+  var y = function (v) { return padT + (H - padT - padB) * (1 - (v - lo) / span); };
+  var x = function (i) { return padL + (W - padL - padR) * (i / (pts.length - 1)); };
+
+  g.font = "11px system-ui,sans-serif";
+  g.fillStyle = cs.getPropertyValue("--muted");
+  g.strokeStyle = cs.getPropertyValue("--grid");
+  g.lineWidth = 1;
+  for (var k = 0; k <= 3; k++) {
+    var v = lo + (span * k) / 3, yy = y(v);
+    g.beginPath(); g.moveTo(padL, yy); g.lineTo(W - padR, yy); g.stroke();
+    g.fillText(fmt(v), 2, yy + 4);
+  }
+  g.strokeStyle = cs.getPropertyValue("--line");
+  g.lineWidth = 2;
+  g.beginPath();
+  for (var j = 0; j < pts.length; j++) {
+    if (j === 0) g.moveTo(x(j), y(pts[j].close)); else g.lineTo(x(j), y(pts[j].close));
+  }
+  g.stroke();
+}
+
+fetch("data/asii.json?t=" + Date.now())
+  .then(function (r) { return r.json(); })
+  .then(function (d) {
+    pts = d.points;
+    if (!pts || pts.length < 2) throw new Error("no data");
+    draw();
+    window.onresize = draw;
+  })
+  .catch(function () {
+    document.getElementById("price").textContent = "Could not load data";
+  });
+</script>
+</body>
+</html>
